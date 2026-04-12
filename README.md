@@ -234,9 +234,9 @@ Everything else uses the Python standard library: `socket`, `threading`, `struct
 
 ## ⚠️ Limitations & Scope
 
-- **Single-peer only** — one host, one client. No group chat.
-- **No NAT traversal** — both peers must be directly reachable (same LAN or port-forwarded).
-- **No persistent keys** — keys are generated fresh every session (no identity verification between sessions).
+- **Single-peer only** — one host, one client. No group chat ==> ( new features that must be added ) .
+- **No NAT traversal** — both peers must be directly reachable (same LAN or port-forwarded) ==> (new features that must be added ).
+- **No persistent keys** — keys are generated fresh every session (no identity verification between sessions)==> (new features that must be added ).
 - **No file transfer** — text messages only.
 - **No message history** — messages are not stored anywhere.
 
