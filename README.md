@@ -1,61 +1,20 @@
-# 🔒 P2P Secure Chat
+# 🔒 P2P Secure Chat v2
 
-A minimal, **pure peer-to-peer** secure terminal chat application — no servers,
-no cloud, no intermediaries of any kind.
-
-Two peers communicate directly over a **TCP socket**, with every message
-protected by **RSA-2048 key exchange** and **AES-256 (Fernet) encryption**.
+A **pure peer-to-peer** secure terminal chat tool with file transfer and
+local history — no server, no cloud, no relay of any kind.
 
 ---
 
-## ⚠️ Important: This Is a Pure P2P Application
+## ⚠️ Pure P2P — No Server Involved
 
-> **No server is used — ever.**
+Both peers communicate directly over a **TCP socket**.
+No central server, no message broker, no relay, no cloud service.
 
-The two machines communicate directly with each other.  
-There is no central server, no message broker, no relay, no cloud service,
-no WebSocket gateway, and no STUN/TURN infrastructure.
-
-This also means:
-
-| Scenario | Works? | Notes |
+| Scenario | Works? | What to use |
 |---|---|---|
-| Same WiFi / LAN | ✅ Yes | Use each other's local IP |
-| Internet (different networks) | ✅ Yes | Requires public IP + port forwarding |
-| Both behind NAT, no port forwarding | ❌ No | NAT traversal is out of scope by design |
-
----
-
-## 🔐 Security Architecture
-
-```
-Peer A (host)                          Peer B (client)
-─────────────────────────────────────────────────────────
-Generate RSA-2048 key pair             Generate RSA-2048 key pair
-                                       
-Send RSA public key  ──────────────────────────────────>
-                     <────────────────────────  Send RSA public key
-                                       
-Generate AES session key               
-Encrypt AES key with B's RSA pub key   
-Send encrypted AES key ────────────────────────────────>
-                                       Decrypt AES key with own RSA priv key
-                                       
-[Both peers now share the same AES key — established without sending it in plaintext]
-
-All subsequent messages: AES-Fernet encrypted (AES-128-CBC + HMAC-SHA256)
-```
-
-### Why this is secure
-
-| Threat | Protection |
-|---|---|
-| Eavesdropping | All traffic is AES-encrypted after handshake |
-| AES key interception | AES key is RSA-OAEP encrypted in transit |
-| Message tampering | Fernet includes HMAC-SHA256 authentication |
-| Key reuse | AES key and RSA keys are ephemeral (runtime only, never stored) |
-| Padding oracle | RSA-OAEP used (not PKCS#1 v1.5) |
-| IV reuse | Fernet generates a random IV per message |
+| Same WiFi / LAN | ✅ | Local IP (`192.168.x.x`) |
+| Internet (different networks) | ✅ | Public IP + router port forwarding |
+| Both behind NAT, no port forwarding | ❌ | Not supported by design |
 
 ---
 
@@ -63,28 +22,56 @@ All subsequent messages: AES-Fernet encrypted (AES-128-CBC + HMAC-SHA256)
 
 ```
 p2p_secure_chat/
-├── host.py       — Listening peer (generates & distributes AES key)
-├── client.py     — Connecting peer (receives & decrypts AES key)
-├── crypto.py     — RSA + AES cryptographic primitives
-├── chat.sh       — SSH-style CLI wrapper
-└── README.md     — This file
+├── host.py           Listening peer
+├── client.py         Connecting peer
+├── crypto.py         RSA + AES cryptography + IP helpers
+├── common.py         Shared framing, handshake, chat engine
+├── file_transfer.py  Encrypted chunked file transfer
+├── history.py        Local JSON chat history
+├── chat.sh           SSH-style CLI wrapper
+├── received_files/   Incoming files saved here (auto-created)
+└── chat_history.json Local event log (auto-created)
 ```
+
+---
+
+## 🔐 Security Architecture
+
+```
+Peer A (host)                         Peer B (client)
+──────────────────────────────────────────────────────
+Generate RSA-2048 key pair            Generate RSA-2048 key pair
+
+Send RSA public key ─────────────────────────────────►
+                    ◄───────────────────── Send RSA public key
+
+Generate AES session key
+Encrypt AES key with B's RSA pub key
+Send encrypted AES key ──────────────────────────────►
+                              Decrypt with own RSA private key
+
+══════════ All subsequent traffic: AES-Fernet encrypted ══════════
+```
+
+| Threat | Mitigation |
+|---|---|
+| Eavesdropping | AES-Fernet on every frame |
+| AES key theft | Key sent only RSA-OAEP encrypted |
+| Tampering | Fernet includes HMAC-SHA256 per message |
+| IV reuse | Fernet generates a fresh random IV per message |
+| Padding oracle | RSA-OAEP used (not PKCS#1 v1.5) |
+| Key persistence | All keys are ephemeral, never written to disk |
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Install the only dependency
+### 1. Install the dependency
 
 ```bash
 pip install cryptography
-```
-
-On Ubuntu/Debian with Python 3.12+ (PEP 668):
-```bash
+# Ubuntu/Debian Python 3.12+:
 pip install cryptography --break-system-packages
-# or use a venv:
-python3 -m venv .venv && source .venv/bin/activate && pip install cryptography
 ```
 
 ### 2. Make the wrapper executable
@@ -93,155 +80,138 @@ python3 -m venv .venv && source .venv/bin/activate && pip install cryptography
 chmod +x chat.sh
 ```
 
-### 3a. Same WiFi / LAN
+### 3a. Same network (LAN/WiFi)
 
-**On Peer A's machine (host):**
 ```bash
+# Peer A
 ./chat.sh --host
-```
 
-**On Peer B's machine (client) — find Peer A's LAN IP first:**
-```bash
+# Peer B (use Peer A's local IP shown at startup)
 ./chat.sh --connect 192.168.1.42
 ```
 
 ### 3b. Over the Internet
 
-**On Peer A's machine (host):**
 ```bash
+# Peer A: forward TCP 5000 on your router first
 ./chat.sh --host --port 5000
+
+# Peer B
+./chat.sh --connect 203.0.113.7 --port 5000
 ```
 
-**On Peer B's machine (client):**
-```bash
-./chat.sh --connect <PEER_A_PUBLIC_IP> --port 5000
-```
-
-You can also call Python directly:
+### 3c. Local test (both peers on one machine)
 
 ```bash
-# Host
-python3 host.py --port 5000
-
-# Client
-python3 client.py 192.168.1.42 --port 5000
+python3 host.py               # terminal 1
+python3 client.py 127.0.0.1  # terminal 2
 ```
+
+---
+
+## 💬 In-Chat Commands
+
+| Command | Action |
+|---|---|
+| `/sendfile path/to/file` | Encrypt and send a file |
+| `/history` | Show local chat history |
+| `/help` | Show command reference |
+| `/exit` | Gracefully disconnect |
+| *(anything else)* | Send as a chat message |
+
+### Message display
+
+```
+[12:01:05] You: Hello!
+[12:01:07] Friend: Hey, is this encrypted?
+[12:01:09] You: Yes — RSA handshake + AES Fernet 🔒
+```
+
+### File transfer
+
+```
+[12:05:00] You: /sendfile ~/Documents/report.pdf
+  [→] Sending 'report.pdf'  (204,800 bytes, 4 chunk(s))...
+  [████████████████████] 100%  chunk 4/4
+  [✓] 'report.pdf' sent successfully.
+```
+
+Receiver sees:
+
+```
+  [←] Receiving 'report.pdf'  (204,800 bytes, 4 chunk(s))...
+  [████████████████████] 100%  chunk 4/4
+  [✓] Saved to 'received_files/report.pdf'  (204,800 bytes).
+```
+
+---
+
+## 💾 Chat History (chat_history.json)
+
+```json
+[
+  {
+    "type": "message",
+    "from": "you",
+    "to": "peer",
+    "message": "Hello!",
+    "timestamp": "2026-04-12 12:01:05"
+  },
+  {
+    "type": "file_sent",
+    "filename": "report.pdf",
+    "size": 204800,
+    "timestamp": "2026-04-12 12:05:00"
+  }
+]
+```
+
+View with `/history` in-session, or open the file directly.
 
 ---
 
 ## 🌐 Finding Your IP Address
 
-### Local IP (LAN)
+### Local (LAN) IP
 
 ```bash
-# Linux / macOS
 hostname -I          # Linux
 ifconfig | grep inet # macOS
-
-# Windows
-ipconfig
+ipconfig             # Windows
 ```
 
-Look for an address like `192.168.x.x` or `10.x.x.x`.
-
-### Public IP (Internet)
+### Public (WAN) IP
 
 ```bash
 curl ifconfig.me
-# or
-curl https://api.ipify.org
 ```
+
+Both are displayed automatically at startup by the tool.
 
 ---
 
-## 🔧 Router Port Forwarding (Internet Use)
+## 🔧 Router Port Forwarding (for Internet use)
 
-If Peer A is behind a home router (NAT), Peer B cannot reach them directly.
-Peer A must configure **port forwarding** on their router.
-
-**General steps (exact UI varies by router brand):**
-
-1. Log in to your router admin panel (usually `http://192.168.1.1` or `http://192.168.0.1`)
-2. Find **Port Forwarding** (sometimes under "NAT", "Virtual Servers", or "Advanced")
-3. Create a new rule:
-
-| Field | Value |
-|---|---|
-| Protocol | TCP |
-| External Port | 5000 (or your chosen port) |
-| Internal IP | Your computer's LAN IP (e.g. `192.168.1.42`) |
-| Internal Port | 5000 |
-
-4. Save and apply.
-5. Share your **public IP** (not LAN IP) with Peer B.
-
-> **Note:** If both users are behind NAT and neither has port forwarding configured,
-> this tool cannot establish a direct connection. Use the same local network,
-> or configure port forwarding on one side.
-
----
-
-## 💬 Chat Usage
-
-Once connected, both terminals show:
-
-```
-🔐 Secure channel established. Start chatting!
-
-──────────────────────────────────────────────
-You: hello!
-Friend: hey, is this really encrypted?
-You: yes — RSA handshake + AES Fernet 🔒
-```
-
-- **`You:`** — your outgoing messages  
-- **`Friend:`** — messages received from peer  
-- Press **Ctrl-C** on either side to disconnect gracefully.
-
----
-
-## ⚙️ Configuration Options
-
-| Flag | Default | Description |
-|---|---|---|
-| `--port PORT` | `5000` | TCP port to listen on / connect to |
-| `--host` | — | Run as the listening peer |
-| `--connect IP` | — | Run as the connecting peer |
-
----
-
-## 🧪 Local Test (both peers on the same machine)
-
-```bash
-# Terminal 1
-python3 host.py --port 5000
-
-# Terminal 2
-python3 client.py 127.0.0.1 --port 5000
-```
+1. Log in to router admin panel (typically `http://192.168.1.1`)
+2. Find Port Forwarding / NAT / Virtual Servers
+3. Add a rule: Protocol=TCP, External Port=5000, Internal IP=your LAN IP, Internal Port=5000
+4. Share your public IP with the client peer
 
 ---
 
 ## 📋 Dependencies
 
-| Package | Purpose | Install |
-|---|---|---|
-| `cryptography` | RSA + Fernet (AES) | `pip install cryptography` |
+| Package | Purpose |
+|---|---|
+| `cryptography` | RSA-2048, Fernet (AES+HMAC) |
 
-Everything else uses the Python standard library: `socket`, `threading`, `struct`, `argparse`.
-
----
-
-## ⚠️ Limitations & Scope
-
-- **Single-peer only** — one host, one client. No group chat.
-- **No NAT traversal** — both peers must be directly reachable (same LAN or port-forwarded).
-- **No persistent keys** — keys are generated fresh every session (no identity verification between sessions).
-- **No file transfer** — text messages only.
-- **No message history** — messages are not stored anywhere.
+Everything else is Python stdlib: socket, threading, struct, json, base64, argparse, urllib.
 
 ---
 
-## 📄 License
+## ⚠️ Limitations
 
-MIT — use freely, modify freely.
+- Single peer only — one host, one client per session
+- No NAT traversal — requires direct reachability or port forwarding
+- No persistent identity — keys are ephemeral (no PKI across sessions)
+- chat_history.json is stored as plaintext locally
