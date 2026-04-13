@@ -1,0 +1,53 @@
+# ============================================================
+#  P2P Secure Chat — Python Dependencies
+# ============================================================
+#  Install all at once:
+#
+#    pip install -r requirements.txt
+#
+#  On Ubuntu/Debian with Python 3.12+ (PEP 668):
+#
+#    pip install -r requirements.txt --break-system-packages
+#
+#  Or inside a virtual environment (recommended):
+#
+#    python3 -m venv .venv
+#    source .venv/bin/activate        # Linux / macOS
+#    .venv\Scripts\activate           # Windows
+#    pip install -r requirements.txt
+# ============================================================
+
+# ── Cryptography ─────────────────────────────────────────────
+# RSA-2048 key generation, OAEP encryption, Fernet (AES-128-CBC + HMAC-SHA256)
+cryptography>=41.0.0
+
+# ── Audio (VoIP voice calls) ─────────────────────────────────
+# Real-time microphone capture and speaker playback (wraps PortAudio)
+sounddevice>=0.4.6
+
+# ── Numerical (audio frame processing) ───────────────────────
+# float32 audio buffer handling for VoIP frames
+numpy>=1.24.0
+
+
+# ============================================================
+#  System-level dependencies (NOT installed via pip)
+# ============================================================
+#
+#  PortAudio — required by sounddevice for audio I/O
+#
+#  Linux (Debian / Ubuntu):
+#    sudo apt install libportaudio2 portaudio19-dev
+#
+#  macOS (Homebrew):
+#    brew install portaudio
+#
+#  Windows:
+#    No extra step — sounddevice bundles PortAudio on Windows.
+#
+# ============================================================
+#
+#  Python version requirement: 3.10 or newer
+#  (uses match/case-compatible union type hints: dict | None)
+#
+# ============================================================
